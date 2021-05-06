@@ -1,8 +1,0 @@
-prefix=/workspace/assignments/03-lidar-odmetry-aloam/devel
-
-Name: lidar_localization
-Description: Description of lidar_localization
-Version: 1.0.0
-Cflags: -I/workspace/assignments/03-lidar-odmetry-aloam/devel/include
-Libs: -L${prefix}/lib 
-Requires: 

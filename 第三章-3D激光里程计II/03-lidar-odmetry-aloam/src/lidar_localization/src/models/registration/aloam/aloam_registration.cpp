@@ -71,7 +71,7 @@ ALOAMRegistration::ALOAMRegistration(
 // TODO
 bool ALOAMRegistration::SetInputTarget(const CloudData::CLOUD_PTR& input_target) {
 
-    std::cout << input_target->points.size() << std::endl;
+    //std::cout << input_target->points.size() << std::endl;
     input_target_ = input_target;
     ExtractCornerandFlat(input_target_);
 
@@ -127,7 +127,7 @@ bool ALOAMRegistration::ScanMatch(
         plane_correspondence = 0;
 
         // 鲁棒核函数
-        ceres::LossFunction *loss_function = new ceres::HuberLoss(0.03);
+        ceres::LossFunction *loss_function = new ceres::HuberLoss(0.01);
 
         ceres::Problem::Options problem_options;
 
@@ -224,10 +224,10 @@ bool ALOAMRegistration::ScanMatch(
 
                 // 构建误差函数
                 //ceres::CostFunction * cost_function = new AnalyiticLidarEdgeFactor(curr_point,last_point_a,last_point_b);
-                //ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
+                ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
                 // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
 
-                ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
+                //ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
                 problem.AddResidualBlock(cost_function, loss_function, sophus_param);
                 corner_correspondence++;    // transformation.setIdentity();
                 // transformation.block<3,3>(0,0) = q_last_curr.toRotationMatrix().cast<float>();
@@ -324,8 +324,8 @@ bool ALOAMRegistration::ScanMatch(
 
                     // 构建残差块
                     // ceres::CostFunction * cost_function = new AnalyiticLidarPalneFactor(curr_point,last_point_a, last_point_b, last_point_c);
-                    //ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
-                    ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
+                    ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
+                    // ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
                     problem.AddResidualBlock(cost_function, loss_function, sophus_param);
 
                     //problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
@@ -370,7 +370,7 @@ bool ALOAMRegistration::ScanMatch(
     // laserCloudCornerLastNum = laserCloudCornerLast->points.size();
     // laserCloudSurfLastNum = laserCloudSurfLast->points.size();
 
-    // std::cout << "the size of corner last is " << laserCloudCornerLastNum << ", and the size of surf last is " << laserCloudSurfLastNum << '\n';
+    // //std::cout << "the size of corner last is " << laserCloudCornerLastNum << ", and the size of surf last is " << laserCloudSurfLastNum << '\n';
     // kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
     // kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
     return true;
@@ -481,7 +481,7 @@ bool ALOAMRegistration::ExtractCornerandFlat(const CloudData::CLOUD_PTR& input){
 
     // 有效点数量
     cloudSize = count;
-    printf("points size %d \n", cloudSize);
+    //printf("points size %d \n", cloudSize);
 
     // 对每一束激光剔除前5个点和倒数5个点
     pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloud(new pcl::PointCloud<pcl::PointXYZI>());
@@ -649,6 +649,7 @@ bool ALOAMRegistration::ExtractCornerandFlat(const CloudData::CLOUD_PTR& input){
         downSizeFilter.filter(surfPointsLessFlatScanDS);
 
         surfPointsLessFlat_ += surfPointsLessFlatScanDS;
+        //surfPointsLessFlat_ += *surfPointsLessFlatScan;
         
 
     }
@@ -665,8 +666,8 @@ bool ALOAMRegistration::ExtractCornerandFlat(const CloudData::CLOUD_PTR& input){
     *surfPointsLessFlat = surfPointsLessFlat_;
 
 
-    std::cout << "sharp:" << cornerPointsSharp->points.size() << "less shape" << cornerPointsLessSharp->points.size() << std::endl;
-    std::cout << "flat:" << surfPointsFlat->points.size() << "less flat" << surfPointsLessFlat->points.size() << std::endl;
+    //std::cout << "sharp:" << cornerPointsSharp->points.size() << "less shape" << cornerPointsLessSharp->points.size() << std::endl;
+    //std::cout << "flat:" << surfPointsFlat->points.size() << "less flat" << surfPointsLessFlat->points.size() << std::endl;
     return true;
 
 }

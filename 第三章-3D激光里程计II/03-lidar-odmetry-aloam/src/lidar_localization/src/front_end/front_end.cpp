@@ -109,6 +109,7 @@ bool FrontEnd::InitRegistration(std::shared_ptr<RegistrationInterface>& registra
     }
     else if(registration_method == "ALOAM"){
         registration_ptr = std::make_shared<ALOAMRegistration>(config_node[registration_method]);
+        Aloam = true;
     }
     else {
         LOG(ERROR) << "Point cloud registration method " << registration_method << " NOT FOUND!";
@@ -144,8 +145,8 @@ bool FrontEnd::Update(const CloudData& cloud_data, Eigen::Matrix4f& cloud_pose) 
     pcl::removeNaNFromPointCloud(*cloud_data.cloud_ptr, *current_frame_.cloud_data.cloud_ptr, indices);
 
     // 对输入点云进行滤波
-    // CloudData::CLOUD_PTR filtered_cloud_ptr(new CloudData::CLOUD());
-    // frame_filter_ptr_->Filter(current_frame_.cloud_data.cloud_ptr, filtered_cloud_ptr);
+    CloudData::CLOUD_PTR filtered_cloud_ptr(new CloudData::CLOUD());
+    frame_filter_ptr_->Filter(current_frame_.cloud_data.cloud_ptr, filtered_cloud_ptr);
 
     // 静态变量
     static Eigen::Matrix4f step_pose = Eigen::Matrix4f::Identity();
@@ -164,7 +165,16 @@ bool FrontEnd::Update(const CloudData& cloud_data, Eigen::Matrix4f& cloud_pose) 
 
     // 不是第一帧，就正常匹配
     // 注意，这里是和全局坐标系下的点云进行配准，出来的结果也是全局坐标系下的结果
-    registration_ptr_->ScanMatch(current_frame_.cloud_data.cloud_ptr, predict_pose, result_cloud_ptr_, current_frame_.pose);
+
+    if(Aloam){
+        registration_ptr_->ScanMatch(current_frame_.cloud_data.cloud_ptr, predict_pose, result_cloud_ptr_, current_frame_.pose);
+    }else{
+        registration_ptr_->ScanMatch(filtered_cloud_ptr, predict_pose, result_cloud_ptr_, current_frame_.pose);
+    }
+    
+    
+
+    
     // 更新点云对应的位姿
     cloud_pose = current_frame_.pose;
 
@@ -173,13 +183,25 @@ bool FrontEnd::Update(const CloudData& cloud_data, Eigen::Matrix4f& cloud_pose) 
     predict_pose = current_frame_.pose * step_pose;             // 预测的下一帧的位姿
     last_pose = current_frame_.pose;
 
+
     // 匹配之后根据距离判断是否需要生成新的关键帧，如果需要，则做相应更新
-    if (fabs(last_key_frame_pose(0,3) - current_frame_.pose(0,3)) + 
+
+    if(Aloam){
+        UpdateWithNewFrame(current_frame_);
+        last_key_frame_pose = current_frame_.pose;
+    }else{
+        if (fabs(last_key_frame_pose(0,3) - current_frame_.pose(0,3)) + 
         fabs(last_key_frame_pose(1,3) - current_frame_.pose(1,3)) +
         fabs(last_key_frame_pose(2,3) - current_frame_.pose(2,3)) > key_frame_distance_) {
         UpdateWithNewFrame(current_frame_);
-        last_key_frame_pose = current_frame_.pose;
+        last_key_frame_pose = current_frame_.pose;}
     }
+
+        
+    
+
+
+
 
     return true;
 }
@@ -190,6 +212,8 @@ bool FrontEnd::SetInitPose(const Eigen::Matrix4f& init_pose) {
 }
 
 bool FrontEnd::UpdateWithNewFrame(const Frame& new_key_frame) {
+
+    static int index = 1;
     // 把关键帧点云存储到硬盘里，节省内存
     std::string file_path = data_path_ + "/key_frames/key_frame_" + std::to_string(global_map_frames_.size()) + ".pcd";
     pcl::io::savePCDFileBinary(file_path, *new_key_frame.cloud_data.cloud_ptr);
@@ -214,18 +238,29 @@ bool FrontEnd::UpdateWithNewFrame(const Frame& new_key_frame) {
         *local_map_ptr_ += *transformed_cloud_ptr;
     }
     has_new_local_map_ = true;
+    
 
     // 更新ndt匹配的目标点云
     // 关键帧数量还比较少的时候不滤波，因为点云本来就不多，太稀疏影响匹配效果
+
     if (local_map_frames_.size() < 10) {
         std::cout << "Set input cloud" <<std::endl;
         registration_ptr_->SetInputTarget(local_map_ptr_);
-        std::cout << "test2" <<std::endl;
 
     } else {
+        if(Aloam){
+            if(index % 5 == 0){
+                registration_ptr_->SetInputTarget(local_map_ptr_);
+                index = index +1;
+            }else{
+                registration_ptr_->SetInputTarget(result_cloud_ptr_);
+            }
+        }
+        else{
         CloudData::CLOUD_PTR filtered_local_map_ptr(new CloudData::CLOUD());
         local_map_filter_ptr_->Filter(local_map_ptr_, filtered_local_map_ptr);
         registration_ptr_->SetInputTarget(filtered_local_map_ptr);
+        }
     }
 
     // 保存所有关键帧信息在容器里

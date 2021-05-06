@@ -100,6 +100,8 @@ class FrontEnd {
     // 提取关键帧的参数
     float key_frame_distance_ = 2.0;
     int local_frame_num_ = 20;
+
+    bool Aloam = false;
 };
 
 }
