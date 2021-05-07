@@ -14,6 +14,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <eigen3/Eigen/Dense>
 #include <pcl/common/transforms.h>
+#include <queue>
+#include <deque>
 
 #include "lidar_localization/models/registration/aloam/common.h"
 #include "lidar_localization/models/registration/registration_interface.hpp"
@@ -21,6 +23,7 @@
 
 
 namespace lidar_localization {
+
 class ALOAMRegistration: public RegistrationInterface {
   public:
     ALOAMRegistration(const YAML::Node& node);
@@ -36,9 +39,24 @@ class ALOAMRegistration: public RegistrationInterface {
                    CloudData::CLOUD_PTR& result_cloud_ptr,
                    Eigen::Matrix4f& result_pose) override;
 
+    // scan to scan 模式
+
+    
+    
+
   private:
 
     bool ExtractCornerandFlat(const CloudData::CLOUD_PTR& input);
+    bool ScanToScan(const CloudData::CLOUD_PTR& input_source, 
+                  const Eigen::Matrix4f& predict_pose, 
+                  CloudData::CLOUD_PTR& result_cloud_ptr,
+                  Eigen::Matrix4f& result_pose);
+
+
+    bool ScanToMap(const CloudData::CLOUD_PTR& input_source, 
+                  const Eigen::Matrix4f& predict_pose, 
+                  CloudData::CLOUD_PTR& result_cloud_ptr,
+                  Eigen::Matrix4f& result_pose);
 
     void removeClosedPointCloud(const pcl::PointCloud<pcl::PointXYZ> &cloud_in,
                               pcl::PointCloud<pcl::PointXYZ> &cloud_out, float thres);
@@ -65,8 +83,14 @@ class ALOAMRegistration: public RegistrationInterface {
     pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudSurfLast;
     pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudFullRes;
 
+    pcl::KdTreeFLANN<pcl::PointXYZ>::Ptr kdtree_local_map;
+
     double sophus_param[6];
     CloudData::CLOUD_PTR input_target_;
+    
+    int Mode = 1;   // 1为to scan 2为 to map
+    int frame_id = 0;
+  
 
 };
 

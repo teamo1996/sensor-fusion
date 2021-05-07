@@ -23,7 +23,8 @@ ALOAMRegistration::ALOAMRegistration(const YAML::Node& node):kdtreeCornerLast(ne
                                                             surfPointsLessFlat(new pcl::PointCloud<pcl::PointXYZI>()),
                                                             laserCloudCornerLast(new pcl::PointCloud<pcl::PointXYZI>()),
                                                             laserCloudSurfLast(new pcl::PointCloud<pcl::PointXYZI>()),
-                                                            laserCloudFullRes(new pcl::PointCloud<pcl::PointXYZI>()){
+                                                            laserCloudFullRes(new pcl::PointCloud<pcl::PointXYZI>()),
+                                                            kdtree_local_map(new pcl::KdTreeFLANN<pcl::PointXYZ>()){
     minimum_range_ = node["minimum_range"].as<float>();
     scan_line_ = node["scan_line"].as<int>();
 
@@ -52,7 +53,8 @@ ALOAMRegistration::ALOAMRegistration(
                         surfPointsLessFlat(new pcl::PointCloud<pcl::PointXYZI>()),
                         laserCloudCornerLast(new pcl::PointCloud<pcl::PointXYZI>()),
                         laserCloudSurfLast(new pcl::PointCloud<pcl::PointXYZI>()),
-                        laserCloudFullRes(new pcl::PointCloud<pcl::PointXYZI>()){
+                        laserCloudFullRes(new pcl::PointCloud<pcl::PointXYZI>()),
+                        kdtree_local_map(new pcl::KdTreeFLANN<pcl::PointXYZ>()){
     
     minimum_range_ = minimum_range;
     scan_line_ = scan_line;
@@ -70,11 +72,240 @@ ALOAMRegistration::ALOAMRegistration(
 
 // TODO
 bool ALOAMRegistration::SetInputTarget(const CloudData::CLOUD_PTR& input_target) {
-
-    //std::cout << input_target->points.size() << std::endl;
+    // 第一帧点云
     input_target_ = input_target;
-    ExtractCornerandFlat(input_target_);
+    if(frame_id == 0){
+        // 提取角点和面点
+        ExtractCornerandFlat(input_target_);
 
+        pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudTemp = cornerPointsLessSharp;
+        cornerPointsLessSharp = laserCloudCornerLast;
+        laserCloudCornerLast = laserCloudTemp;
+
+        laserCloudTemp = surfPointsLessFlat;
+        surfPointsLessFlat = laserCloudSurfLast;
+        laserCloudSurfLast = laserCloudTemp;
+
+        laserCloudCornerLastNum = laserCloudCornerLast->points.size();
+        laserCloudSurfLastNum = laserCloudSurfLast->points.size();
+        kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
+        kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
+        frame_id ++;
+    }
+    else{
+        // 使用局部地图进行配准
+        kdtree_local_map->setInputCloud(input_target_);
+        Mode = 0;
+    }
+    return true;
+}
+
+bool ALOAMRegistration::ScanMatch(
+    const CloudData::CLOUD_PTR& input_source, 
+    const Eigen::Matrix4f& predict_pose, 
+    CloudData::CLOUD_PTR& result_cloud_ptr,
+    Eigen::Matrix4f& result_pose
+) {
+    // scan to scan 模式
+    if(Mode){
+        frame_id ++;
+        return ScanToScan(input_source,
+                        predict_pose,
+                        result_cloud_ptr,
+                        result_pose);
+    }
+    else{
+        frame_id ++;
+        return ScanToMap(input_source,
+                        predict_pose,
+                        result_cloud_ptr,
+                        result_pose);
+    }
+
+}
+
+bool ALOAMRegistration::ScanToMap(const CloudData::CLOUD_PTR& input_source, 
+                  const Eigen::Matrix4f& predict_pose, 
+                  CloudData::CLOUD_PTR& result_cloud_ptr,
+                  Eigen::Matrix4f& result_pose){
+    
+    std::vector<int> pointSearchInd;
+    std::vector<float> pointSearchSqDis;
+
+
+    CloudData::CLOUD_PTR input_source_ = input_source;
+    CloudData::CLOUD_PTR transformed_input_source(new CloudData::CLOUD());
+    pcl::transformPointCloud(*input_source_, *transformed_input_source, predict_pose);
+
+    ExtractCornerandFlat(transformed_input_source);
+
+    int cornerPointsSharpNum = cornerPointsSharp->points.size();
+    int surfPointsFlatNum = surfPointsFlat->points.size();
+
+    Sophus::SE3d pose_se3;
+    pose_se3.setRotationMatrix(Eigen::Matrix3d::Identity());
+    pose_se3.trans(Eigen::Vector3d::Zero());
+    Eigen::Matrix<double, 6, 1> pose_vec = pose_se3.log();
+    sophus_param[0] = pose_vec(0, 0);
+    sophus_param[1] = pose_vec(1, 0);
+    sophus_param[2] = pose_vec(2, 0);
+    sophus_param[3] = pose_vec(3, 0);
+    sophus_param[4] = pose_vec(4, 0);
+    sophus_param[5] = pose_vec(5, 0);
+
+
+     for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter)     // 循环两次计算
+    {
+
+        // 鲁棒核函数
+        ceres::LossFunction *loss_function = new ceres::HuberLoss(0.05);
+
+        ceres::Problem::Options problem_options;
+
+        ceres::Problem problem(problem_options);
+
+        problem.AddParameterBlock(sophus_param, 6);
+        problem.SetParameterization(sophus_param, new PoseSE3Parameterization());
+
+        pcl::PointXYZ pointSel;
+        std::vector<int> pointSearchInd;
+        std::vector<float> pointSearchSqDis;
+
+        int corner_num = 0;
+
+        // find correspondence for corner features
+        // 计算点特征
+        for (int i = 0; i < cornerPointsSharpNum; ++i)
+        {
+            pointSel.x = cornerPointsSharp->points[i].x;
+            pointSel.y = cornerPointsSharp->points[i].y;
+            pointSel.z = cornerPointsSharp->points[i].z;
+
+            kdtree_local_map->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+
+            if (pointSearchSqDis[4] < 1.0)
+            { 
+                std::vector<Eigen::Vector3d> nearCorners;
+                Eigen::Vector3d center(0, 0, 0);
+                for (int j = 0; j < 5; j++)
+                {
+                    Eigen::Vector3d tmp(input_target_->points[pointSearchInd[j]].x,
+                                        input_target_->points[pointSearchInd[j]].y,
+                                        input_target_->points[pointSearchInd[j]].z);
+                    center = center + tmp;
+                    nearCorners.push_back(tmp);
+                }
+                center = center / 5.0;
+
+                Eigen::Matrix3d covMat = Eigen::Matrix3d::Zero();
+                for (int j = 0; j < 5; j++)
+                {
+                    Eigen::Matrix<double, 3, 1> tmpZeroMean = nearCorners[j] - center;
+                    covMat = covMat + tmpZeroMean * tmpZeroMean.transpose();
+                }
+
+                Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> saes(covMat);
+
+                // if is indeed line feature
+                // note Eigen library sort eigenvalues in increasing order
+                Eigen::Vector3d unit_direction = saes.eigenvectors().col(2);
+                Eigen::Vector3d curr_point(pointSel.x, pointSel.y, pointSel.z);
+                if (saes.eigenvalues()[2] > 3 * saes.eigenvalues()[1])
+                { 
+                    Eigen::Vector3d point_on_line = center;
+                    Eigen::Vector3d point_a, point_b;
+                    point_a = 0.1 * unit_direction + point_on_line;
+                    point_b = -0.1 * unit_direction + point_on_line;
+
+                    ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, point_a, point_b);
+                    problem.AddResidualBlock(cost_function, loss_function, sophus_param);
+                    corner_num++;	
+                }							
+            }
+
+        }
+
+        // 计算点到平面的误差
+        // find correspondence for plane features
+        int surf_num = 0;
+        for (int i = 0; i < surfPointsFlatNum; ++i)
+        {   pointSel.x = surfPointsFlat->points[i].x;
+            pointSel.y = surfPointsFlat->points[i].y;
+            pointSel.z = surfPointsFlat->points[i].z;
+
+            kdtree_local_map->nearestKSearch(pointSel, 5, pointSearchInd, pointSearchSqDis);
+
+            Eigen::Matrix<double, 5, 3> matA0;
+            Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
+            if (pointSearchSqDis[4] < 1.0)
+            {
+                
+                for (int j = 0; j < 5; j++)
+                {
+                    matA0(j, 0) = input_target_->points[pointSearchInd[j]].x;
+                    matA0(j, 1) = input_target_->points[pointSearchInd[j]].y;
+                    matA0(j, 2) = input_target_->points[pointSearchInd[j]].z;
+                    //printf(" pts %f %f %f ", matA0(j, 0), matA0(j, 1), matA0(j, 2));
+                }
+                // find the norm of plane
+                Eigen::Vector3d norm = matA0.colPivHouseholderQr().solve(matB0);
+                double negative_OA_dot_norm = 1 / norm.norm();
+                norm.normalize();
+
+                // Here n(pa, pb, pc) is unit norm of plane
+                bool planeValid = true;
+                for (int j = 0; j < 5; j++)
+                {
+                    // if OX * n > 0.2, then plane is not fit well
+                    if (fabs(norm(0) * input_target_->points[pointSearchInd[j]].x +
+                                norm(1) * input_target_->points[pointSearchInd[j]].y +
+                                norm(2) * input_target_->points[pointSearchInd[j]].z + negative_OA_dot_norm) > 0.2)
+                    {
+                        planeValid = false;
+                        break;
+                    }
+                }
+                Eigen::Vector3d curr_point(pointSel.x, pointSel.y, pointSel.z);
+                if (planeValid)
+                {
+                    ceres::CostFunction *cost_function = LidarPlaneNormFactor::Create(curr_point, norm, negative_OA_dot_norm);
+                    problem.AddResidualBlock(cost_function, loss_function,sophus_param );
+                    surf_num++;
+                }
+            }
+            
+        }
+        if ((corner_num +surf_num) < 10)
+        {
+                printf("less correspondence! *************************************************\n");
+        }
+        ceres::Solver::Options options;
+        options.linear_solver_type = ceres::DENSE_QR;
+        options.max_num_iterations = 4;
+        options.minimizer_progress_to_stdout = false;
+        ceres::Solver::Summary summary;
+        ceres::Solve(options, &problem, &summary);
+        
+    }
+
+
+    Eigen::Matrix4f transformation;
+    Eigen::Matrix<double, 6, 1> vec;
+    vec(0, 0) = sophus_param[0];
+    vec(1, 0) = sophus_param[1];
+    vec(2, 0) = sophus_param[2];
+    vec(3, 0) = sophus_param[3];
+    vec(4, 0) = sophus_param[4];
+    vec(5, 0) = sophus_param[5];
+    transformation = Sophus::SE3d::exp(vec).matrix().cast<float>();
+
+    result_pose = transformation * predict_pose;
+    pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
+
+    pcl::transformPointCloud(*cornerPointsLessSharp, *cornerPointsLessSharp, transformation);
+    pcl::transformPointCloud(*surfPointsLessFlat, *surfPointsLessFlat, transformation);
+
+    
     pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudTemp = cornerPointsLessSharp;
     cornerPointsLessSharp = laserCloudCornerLast;
     laserCloudCornerLast = laserCloudTemp;
@@ -85,18 +316,18 @@ bool ALOAMRegistration::SetInputTarget(const CloudData::CLOUD_PTR& input_target)
 
     laserCloudCornerLastNum = laserCloudCornerLast->points.size();
     laserCloudSurfLastNum = laserCloudSurfLast->points.size();
-
     kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
     kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
-    return true;
+
+    Mode = 1;
+
 }
 
-bool ALOAMRegistration::ScanMatch(
-    const CloudData::CLOUD_PTR& input_source, 
-    const Eigen::Matrix4f& predict_pose, 
-    CloudData::CLOUD_PTR& result_cloud_ptr,
-    Eigen::Matrix4f& result_pose
-) {
+bool ALOAMRegistration::ScanToScan(const CloudData::CLOUD_PTR& input_source, 
+                  const Eigen::Matrix4f& predict_pose, 
+                  CloudData::CLOUD_PTR& result_cloud_ptr,
+                  Eigen::Matrix4f& result_pose){
+
     CloudData::CLOUD_PTR input_source_ = input_source;
     CloudData::CLOUD_PTR transformed_input_source(new CloudData::CLOUD());
     pcl::transformPointCloud(*input_source_, *transformed_input_source, predict_pose);
@@ -118,9 +349,6 @@ bool ALOAMRegistration::ScanMatch(
     sophus_param[4] = pose_vec(4, 0);
     sophus_param[5] = pose_vec(5, 0);
     
-
-
-
      for (size_t opti_counter = 0; opti_counter < 2; ++opti_counter)     // 循环两次计算
     {
         corner_correspondence = 0;
@@ -208,7 +436,6 @@ bool ALOAMRegistration::ScanMatch(
                     }
                 }
             }
-
             // 构建残差块
             if (minPointInd2 >= 0) // both closestPointInd and minPointInd2 is valid
             {
@@ -223,15 +450,12 @@ bool ALOAMRegistration::ScanMatch(
                                                 laserCloudCornerLast->points[minPointInd2].z);
 
                 // 构建误差函数
-                //ceres::CostFunction * cost_function = new AnalyiticLidarEdgeFactor(curr_point,last_point_a,last_point_b);
-                ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
-                // problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
+                //ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
 
-                //ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
+                ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
                 problem.AddResidualBlock(cost_function, loss_function, sophus_param);
                 corner_correspondence++;    // transformation.setIdentity();
-                // transformation.block<3,3>(0,0) = q_last_curr.toRotationMatrix().cast<float>();
-                // transformation.block<3,1>(0,3) = t_last_curr.cast<float>();
+              
             }
         }
 
@@ -324,8 +548,8 @@ bool ALOAMRegistration::ScanMatch(
 
                     // 构建残差块
                     // ceres::CostFunction * cost_function = new AnalyiticLidarPalneFactor(curr_point,last_point_a, last_point_b, last_point_c);
-                    ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
-                    // ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
+                    //ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
+                    ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
                     problem.AddResidualBlock(cost_function, loss_function, sophus_param);
 
                     //problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
@@ -345,6 +569,8 @@ bool ALOAMRegistration::ScanMatch(
         ceres::Solve(options, &problem, &summary);
         
     }
+    
+    
     Eigen::Matrix4f transformation;
     Eigen::Matrix<double, 6, 1> vec;
     vec(0, 0) = sophus_param[0];
@@ -358,24 +584,30 @@ bool ALOAMRegistration::ScanMatch(
     result_pose = transformation * predict_pose;
     pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
 
+// 
 
-    // pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudTemp = cornerPointsLessSharp;
-    // cornerPointsLessSharp = laserCloudCornerLast;
-    // laserCloudCornerLast = laserCloudTemp;
+    pcl::transformPointCloud(*cornerPointsLessSharp, *cornerPointsLessSharp, transformation);
+    pcl::transformPointCloud(*surfPointsLessFlat, *surfPointsLessFlat, transformation);
+// 
 
-    // laserCloudTemp = surfPointsLessFlat;
-    // surfPointsLessFlat = laserCloudSurfLast;
-    // laserCloudSurfLast = laserCloudTemp;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr laserCloudTemp = cornerPointsLessSharp;
+    cornerPointsLessSharp = laserCloudCornerLast;
+    laserCloudCornerLast = laserCloudTemp;
 
-    // laserCloudCornerLastNum = laserCloudCornerLast->points.size();
-    // laserCloudSurfLastNum = laserCloudSurfLast->points.size();
+    laserCloudTemp = surfPointsLessFlat;
+    surfPointsLessFlat = laserCloudSurfLast;
+    laserCloudSurfLast = laserCloudTemp;
 
-    // //std::cout << "the size of corner last is " << laserCloudCornerLastNum << ", and the size of surf last is " << laserCloudSurfLastNum << '\n';
-    // kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
-    // kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
+    laserCloudCornerLastNum = laserCloudCornerLast->points.size();
+    laserCloudSurfLastNum = laserCloudSurfLast->points.size();
+    kdtreeCornerLast->setInputCloud(laserCloudCornerLast);
+    kdtreeSurfLast->setInputCloud(laserCloudSurfLast);
+
+    Mode = 1;
     return true;
-
+       
 }
+
 
 void ALOAMRegistration::removeClosedPointCloud(const pcl::PointCloud<pcl::PointXYZ> &cloud_in,
                               pcl::PointCloud<pcl::PointXYZ> &cloud_out, float thres)

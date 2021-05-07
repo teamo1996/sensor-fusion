@@ -165,13 +165,12 @@ bool FrontEnd::Update(const CloudData& cloud_data, Eigen::Matrix4f& cloud_pose) 
 
     // 不是第一帧，就正常匹配
     // 注意，这里是和全局坐标系下的点云进行配准，出来的结果也是全局坐标系下的结果
-
     if(Aloam){
         registration_ptr_->ScanMatch(current_frame_.cloud_data.cloud_ptr, predict_pose, result_cloud_ptr_, current_frame_.pose);
-    }else{
+    }
+    else{
         registration_ptr_->ScanMatch(filtered_cloud_ptr, predict_pose, result_cloud_ptr_, current_frame_.pose);
     }
-    
     
 
     
@@ -185,23 +184,13 @@ bool FrontEnd::Update(const CloudData& cloud_data, Eigen::Matrix4f& cloud_pose) 
 
 
     // 匹配之后根据距离判断是否需要生成新的关键帧，如果需要，则做相应更新
-
-    if(Aloam){
-        UpdateWithNewFrame(current_frame_);
-        last_key_frame_pose = current_frame_.pose;
-    }else{
-        if (fabs(last_key_frame_pose(0,3) - current_frame_.pose(0,3)) + 
+    // 认为运动距离足够大
+    if (fabs(last_key_frame_pose(0,3) - current_frame_.pose(0,3)) + 
         fabs(last_key_frame_pose(1,3) - current_frame_.pose(1,3)) +
         fabs(last_key_frame_pose(2,3) - current_frame_.pose(2,3)) > key_frame_distance_) {
         UpdateWithNewFrame(current_frame_);
-        last_key_frame_pose = current_frame_.pose;}
+        last_key_frame_pose = current_frame_.pose;
     }
-
-        
-    
-
-
-
 
     return true;
 }
@@ -248,19 +237,10 @@ bool FrontEnd::UpdateWithNewFrame(const Frame& new_key_frame) {
         registration_ptr_->SetInputTarget(local_map_ptr_);
 
     } else {
-        if(Aloam){
-            if(index % 5 == 0){
-                registration_ptr_->SetInputTarget(local_map_ptr_);
-                index = index +1;
-            }else{
-                registration_ptr_->SetInputTarget(result_cloud_ptr_);
-            }
-        }
-        else{
         CloudData::CLOUD_PTR filtered_local_map_ptr(new CloudData::CLOUD());
         local_map_filter_ptr_->Filter(local_map_ptr_, filtered_local_map_ptr);
+        // sacn to map
         registration_ptr_->SetInputTarget(filtered_local_map_ptr);
-        }
     }
 
     // 保存所有关键帧信息在容器里
