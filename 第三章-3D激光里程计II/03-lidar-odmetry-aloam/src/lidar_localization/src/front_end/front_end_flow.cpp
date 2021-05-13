@@ -21,8 +21,6 @@ FrontEndFlow::FrontEndFlow(ros::NodeHandle& nh) {
 
     // 使用配置文件初始化数据订阅者
     InitSubscribers(nh, config_node["measurements"]);
-
-
     // 初始化数据发布者
     cloud_pub_ptr_ = std::make_shared<CloudPublisher>(nh, "current_scan", 100, "/map");
     local_map_pub_ptr_ = std::make_shared<CloudPublisher>(nh, "local_map", 100, "/map");
@@ -32,6 +30,7 @@ FrontEndFlow::FrontEndFlow(ros::NodeHandle& nh) {
 
     // 构建一个前端类
     front_end_ptr_ = std::make_shared<FrontEnd>();
+    distortion_adjust_ptr_ = std::make_shared<DistortionAdjust>();
 
     // 重置数据指针
     local_map_ptr_.reset(new CloudData::CLOUD());
@@ -93,7 +92,7 @@ bool FrontEndFlow::InitSubscribers(ros::NodeHandle& nh, const YAML::Node& config
     );
 
     //
-    // init input message subs:
+    // 接收传感器信息
     // 
     cloud_sub_ptr_ = std::make_shared<CloudSubscriber>(
         nh, 
@@ -107,32 +106,41 @@ bool FrontEndFlow::InitSubscribers(ros::NodeHandle& nh, const YAML::Node& config
         nh, 
         config_node["gnss"]["topic_name"].as<std::string>(), config_node["gnss"]["queue_size"].as<int>()
     );
+    velocity_sub_ptr_ = std::make_shared<VelocitySubscriber>(
+        nh, 
+        config_node["velocity"]["topic_name"].as<std::string>(), config_node["velocity"]["queue_size"].as<int>()
+    );
 
     return true;
 }
 
 // 数据读取
 bool FrontEndFlow::ReadData() {
+    // 将缓冲区中的点云数据加入当前的点云队列
     cloud_sub_ptr_->ParseData(cloud_data_buff_);
 
     static std::deque<IMUData> unsynced_imu_;
+    static std::deque<VelocityData> unsynced_velocity_;
     static std::deque<GNSSData> unsynced_gnss_;
 
     imu_sub_ptr_->ParseData(unsynced_imu_);
+    velocity_sub_ptr_->ParseData(unsynced_velocity_);
     gnss_sub_ptr_->ParseData(unsynced_gnss_);
 
     if (cloud_data_buff_.size() == 0) {
         return false;
     }
-        
+
+    // 当前帧点云的时间戳  
     double cloud_time = cloud_data_buff_.front().time;
 
     bool valid_imu = IMUData::SyncData(unsynced_imu_, imu_data_buff_, cloud_time);
+    bool valid_velocity = VelocityData::SyncData(unsynced_velocity_, velocity_data_buff_, cloud_time);
     bool valid_gnss = GNSSData::SyncData(unsynced_gnss_, gnss_data_buff_, cloud_time);
 
     static bool sensor_inited = false;
     if (!sensor_inited) {
-        if (!valid_imu || !valid_gnss) {
+        if (!valid_imu || !valid_velocity || !valid_gnss) {
             cloud_data_buff_.pop_front();
             return false;
         }
@@ -170,6 +178,8 @@ bool FrontEndFlow::HasData() {
         return false;
     if (imu_data_buff_.size() == 0)
         return false;
+    if (velocity_data_buff_.size() == 0)
+        return false;
     if (gnss_data_buff_.size() == 0)
         return false;
     
@@ -179,6 +189,7 @@ bool FrontEndFlow::HasData() {
 bool FrontEndFlow::ValidData() {
     current_cloud_data_ = cloud_data_buff_.front();
     current_imu_data_ = imu_data_buff_.front();
+    current_velocity_data_ = velocity_data_buff_.front();
     current_gnss_data_ = gnss_data_buff_.front();
 
     double d_time = current_cloud_data_.time - current_imu_data_.time;
@@ -189,6 +200,7 @@ bool FrontEndFlow::ValidData() {
 
     if (d_time > 0.05) {
         imu_data_buff_.pop_front();
+        velocity_data_buff_.pop_front();
         gnss_data_buff_.pop_front();
         return false;
     }
@@ -214,12 +226,17 @@ bool FrontEndFlow::UpdateGNSSOdometry() {
 }
 
 bool FrontEndFlow::UpdateLaserOdometry() {
+    current_velocity_data_.TransformCoordinate(lidar_to_imu_);
+    distortion_adjust_ptr_->SetMotionInfo(0.1, current_velocity_data_);
+    distortion_adjust_ptr_->AdjustCloud(current_cloud_data_.cloud_ptr, current_cloud_data_.cloud_ptr);
+    
     static bool front_end_pose_inited = false;
 
     // 如果初始位姿没有设置，则设置当前GNSS的位姿为初始位姿
     if (!front_end_pose_inited) {
         front_end_pose_inited = true;
         front_end_ptr_->SetInitPose(gnss_odometry_);
+        return front_end_ptr_->Update(current_cloud_data_, laser_odometry_);
     }
 
     laser_odometry_ = Eigen::Matrix4f::Identity();

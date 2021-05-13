@@ -9,7 +9,7 @@
 
 //静态成员变量必须在类外初始化
 bool lidar_localization::GNSSData::origin_position_inited = false;
-GeographicLib::LocalCartesian lidar_localization::GNSSData::geo_converter;
+GeographicLib::LocalCartesian lidar_localization::GNSSData::geo_converter;  //gnss数据初始基准点
 
 namespace lidar_localization {
 void GNSSData::InitOriginPosition() {

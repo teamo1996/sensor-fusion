@@ -204,8 +204,8 @@ bool FrontEnd::UpdateWithNewFrame(const Frame& new_key_frame) {
 
     static int index = 1;
     // 把关键帧点云存储到硬盘里，节省内存
-    std::string file_path = data_path_ + "/key_frames/key_frame_" + std::to_string(global_map_frames_.size()) + ".pcd";
-    pcl::io::savePCDFileBinary(file_path, *new_key_frame.cloud_data.cloud_ptr);
+    // std::string file_path = data_path_ + "/key_frames/key_frame_" + std::to_string(global_map_frames_.size()) + ".pcd";
+    // pcl::io::savePCDFileBinary(file_path, *new_key_frame.cloud_data.cloud_ptr);
 
     Frame key_frame = new_key_frame;
     // 这一步的目的是为了把关键帧的点云保存下来
@@ -251,6 +251,7 @@ bool FrontEnd::UpdateWithNewFrame(const Frame& new_key_frame) {
     return true;
 }
 
+// 保存全局地图
 bool FrontEnd::SaveMap() {
     global_map_ptr_.reset(new CloudData::CLOUD());
 

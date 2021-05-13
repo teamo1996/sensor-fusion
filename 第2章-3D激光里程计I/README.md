@@ -1,11 +1,3 @@
-<!--
- * @Author: your name
- * @Date: 2021-04-27 11:54:04
- * @LastEditTime: 2021-05-03 23:04:45
- * @LastEditors: Please set LastEditors
- * @Description: In User Settings Edit
- * @FilePath: /sensor-fusion/第2章-3D激光里程计I/README.md
--->
 # 3D激光里程计I
 
 ## 作业主要完成的部分 

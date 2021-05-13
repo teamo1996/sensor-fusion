@@ -299,7 +299,15 @@ bool ALOAMRegistration::ScanToMap(const CloudData::CLOUD_PTR& input_source,
     vec(5, 0) = sophus_param[5];
     transformation = Sophus::SE3d::exp(vec).matrix().cast<float>();
 
+    Eigen::Matrix3f R = transformation.block<3,3>(0,0);
+    Eigen::JacobiSVD<Eigen::MatrixXf> svd(R,Eigen::ComputeThinU | Eigen::ComputeThinV);
+    R = svd.matrixU()*svd.matrixV().transpose();
+    transformation.block<3,3>(0,0) = R;
+
     result_pose = transformation * predict_pose;
+
+
+
     pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
 
     pcl::transformPointCloud(*cornerPointsLessSharp, *cornerPointsLessSharp, transformation);
@@ -450,9 +458,9 @@ bool ALOAMRegistration::ScanToScan(const CloudData::CLOUD_PTR& input_source,
                                                 laserCloudCornerLast->points[minPointInd2].z);
 
                 // 构建误差函数
-                //ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
+                ceres::CostFunction *cost_function = LidarEdgeFactor::Create(curr_point, last_point_a, last_point_b);
 
-                ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
+                // ceres::CostFunction *cost_function = new SophusLidarEdgeFactor(curr_point, last_point_a, last_point_b);
                 problem.AddResidualBlock(cost_function, loss_function, sophus_param);
                 corner_correspondence++;    // transformation.setIdentity();
               
@@ -547,12 +555,10 @@ bool ALOAMRegistration::ScanToScan(const CloudData::CLOUD_PTR& input_source,
                                                     laserCloudSurfLast->points[minPointInd3].z);
 
                     // 构建残差块
-                    // ceres::CostFunction * cost_function = new AnalyiticLidarPalneFactor(curr_point,last_point_a, last_point_b, last_point_c);
-                    //ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
-                    ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
+                    ceres::CostFunction *cost_function = LidarPlaneFactor::Create(curr_point, last_point_a, last_point_b, last_point_c);
+                    // ceres::CostFunction *cost_function =  new SophusLidarPlaneFactor(curr_point, last_point_a, last_point_b, last_point_c);
                     problem.AddResidualBlock(cost_function, loss_function, sophus_param);
 
-                    //problem.AddResidualBlock(cost_function, loss_function, para_q, para_t);
                     plane_correspondence++;
                 }
             }
@@ -581,9 +587,15 @@ bool ALOAMRegistration::ScanToScan(const CloudData::CLOUD_PTR& input_source,
     vec(5, 0) = sophus_param[5];
     transformation = Sophus::SE3d::exp(vec).matrix().cast<float>();
 
-    result_pose = transformation * predict_pose;
-    pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
+    Eigen::Matrix3f R = transformation.block<3,3>(0,0);
+    Eigen::JacobiSVD<Eigen::MatrixXf> svd(R,Eigen::ComputeThinU | Eigen::ComputeThinV);
+    R = svd.matrixU()*svd.matrixV().transpose();
+    transformation.block<3,3>(0,0) = R;
+    
 
+    result_pose = transformation * predict_pose;
+
+    pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
 // 
 
     pcl::transformPointCloud(*cornerPointsLessSharp, *cornerPointsLessSharp, transformation);
