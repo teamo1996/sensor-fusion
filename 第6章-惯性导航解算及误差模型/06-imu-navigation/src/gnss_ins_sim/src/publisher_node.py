@@ -76,7 +76,7 @@ def gnss_ins_sim_publisher():
     rospy.init_node('gnss_ins_sim_node')
     
     # parse params:
-    motion_def_name = 'demo.csv' #rospy.get_param('motion_file')
+    motion_def_name = 'motion_def-3d.csv' #rospy.get_param('motion_file')
     sample_freq_imu = 100.0               #rospy.get_param('sample_frequency/imu')
     sample_freq_gps = 10.0                #rospy.get_param('sample_frequency/gps')
     topic_name_imu = '~sim/sensor/imu'    #rospy.get_param('topic_name')

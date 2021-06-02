@@ -166,6 +166,7 @@ catkin_install_python(PROGRAMS
   src/publisher_node.py
   src/recorder_node_allan_variance_analysis.py
   src/recorder_node_deterministic_error.py
+  src/recorder_node_no_error.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

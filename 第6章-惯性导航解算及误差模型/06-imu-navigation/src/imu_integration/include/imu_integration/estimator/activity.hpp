@@ -30,6 +30,7 @@ class Activity {
     Activity(void);
     void Init(void);
     bool Run(void);
+    void ComputeError(void);
   private:
     // workflow:
     bool ReadData(void);
@@ -109,7 +110,7 @@ class Activity {
     // data buffer:
     std::deque<IMUData> imu_data_buff_;
     std::deque<OdomData> odom_data_buff_;
-
+    std::deque<OdomData> result_buff_;
     // config:
     bool initialized_ = false;
 
@@ -128,6 +129,8 @@ class Activity {
     Eigen::Vector3d vel_ = Eigen::Vector3d::Zero();
 
     nav_msgs::Odometry message_odom_;
+
+    double error_;
 };
 
 } // namespace estimator

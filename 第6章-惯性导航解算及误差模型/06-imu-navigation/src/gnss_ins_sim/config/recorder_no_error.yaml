@@ -1,0 +1,15 @@
+# motion def:
+motion_file: speedup.csv
+# IMU params:
+imu: 1
+# sample frequency of simulated GNSS/IMU data:
+sample_frequency:
+    imu: 100.0
+    gps: 10.0
+# topic name:
+imu_topic_name: /sim/sensor/imu
+odo_topic_name: /pose/ground_truth
+# output rosbag path:
+output_path: /workspace/assignments/06-imu-navigation/src/gnss_ins_sim/integration
+# output name:
+output_name: speedup.bag

@@ -22,6 +22,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
+  message_filters
 )
 
 ## System dependencies are found with CMake's conventions
@@ -126,6 +127,8 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
+
+
 set(ALL_TARGET_LIBRARIES "")
 
 include(cmake/glog.cmake)
@@ -134,6 +137,12 @@ include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
   ${catkin_INCLUDE_DIRS}
+)
+
+# Evaluater
+add_executable(evaluate_node src/evaluater/evaluate.cpp)
+target_link_libraries(evaluate_node
+  ${catkin_LIBRARIES}
 )
 
 ## Utils
@@ -185,6 +194,8 @@ target_link_libraries(generator_node
   generator_activity
   ${catkin_LIBRARIES}
 )
+
+
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
