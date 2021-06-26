@@ -20,6 +20,8 @@
 
 #include "glog/logging.h"
 
+#define random_walk 0
+
 namespace lidar_localization {
 
 // 误差卡尔曼滤波器
@@ -98,8 +100,16 @@ ErrorStateKalmanFilter::ErrorStateKalmanFilter(const YAML::Node &node) {
   F_.block<3, 3>(kIndexErrorOri, kIndexErrorGyro) = -Eigen::Matrix3d::Identity();
 
   B_.block<3, 3>(kIndexErrorOri, kIndexNoiseGyro) = Eigen::Matrix3d::Identity();
-  B_.block<3, 3>(kIndexErrorAccel, kIndexNoiseBiasAccel) = Eigen::Matrix3d::Identity();
-  B_.block<3, 3>(kIndexErrorGyro, kIndexNoiseBiasGyro) = Eigen::Matrix3d::Identity();
+
+  if(random_walk){
+      B_.block<3, 3>(kIndexErrorAccel, kIndexNoiseBiasAccel) = Eigen::Matrix3d::Identity();
+      B_.block<3, 3>(kIndexErrorGyro, kIndexNoiseBiasGyro) = Eigen::Matrix3d::Identity();
+  }
+  else{
+      B_.block<3, 3>(kIndexErrorAccel, kIndexNoiseBiasAccel) = Eigen::Matrix3d::Zero();
+      B_.block<3, 3>(kIndexErrorGyro, kIndexNoiseBiasGyro) = Eigen::Matrix3d::Zero();
+  }
+
 
   // f. 测量方程:
   GPose_.block<3, 3>(0, kIndexErrorPos) = Eigen::Matrix3d::Identity();
@@ -563,7 +573,8 @@ void ErrorStateKalmanFilter::UpdateErrorEstimation(
   MatrixB B;
   B.block<9, 6>(0, 0) = T*B_.block<9, 6>(0, 0);       // 左上角
 
-  B.block<6, 6>(9, 6) = sqrt(T)*B_.block<6, 6>(9, 6); // 右下角
+  if(random_walk)
+    B.block<6, 6>(9, 6) = sqrt(T)*B_.block<6, 6>(9, 6); // 右下角
 
   // 更新误差的预测值（这里其实永远是0）
   X_ = F*X_; // fix this

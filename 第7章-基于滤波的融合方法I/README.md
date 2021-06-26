@@ -56,37 +56,69 @@ APE w.r.t. full transformation (unit-less)
 
 ## 不考虑随机游走模型时的推导过程
 
+首先列出误差方程
 $$
-\delta \dot{x}=F_t \delta x+B_tw
+\delta\dot{p}=\delta v \\ \delta \dot{v} = -R_t[a_t-b_{a_t}]_{\times}\delta \theta + R_t(n_a-\delta b_a) \\ \delta \dot{\theta} = -[\omega_t-b_{\omega t}]_{\times}\delta \theta + n_{\omega} - \delta b_{\omega}\\
+\delta\dot{b}_a = 0 \\ 
+\delta \dot{b}_{\omega} = 0
 $$
-
-其中主要改变的为B矩阵
+与考虑随机游走的情况对比，可知，主要的差别在$B$矩阵，连续情况下的B矩阵如下
 $$
 \boldsymbol B_t =
 \begin{bmatrix}
-0 & 0  \\
-\boldsymbol R_t &0 \\
-0 & \boldsymbol I_3 \\
-0 & 0  \\
-0 & 0 
+0 & 0 & 0 & 0  \\
+\boldsymbol R_t & 0 &0 & 0 \\
+0 & \boldsymbol I_3 & 0 & 0 \\
+0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0
 \end{bmatrix}
 $$
-离散情况下
+离散情况下的$B$矩阵如下
 $$
 \boldsymbol B_{k-1} =
 \begin{bmatrix}
-0 & 0  \\
-\boldsymbol R_{k-1}T &0 \\
-0 & \boldsymbol I_3T \\
-0 & 0  \\
-0 & 0 
+0 & 0 & 0 & 0 \\
+\boldsymbol R_{k-1}T &0 & 0 & 0 \\
+0 & \boldsymbol I_3T & 0 & 0\\
+0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0
 \end{bmatrix}
 $$
 对应的噪声项
 $$
-w = \begin{bmatrix} n_a \\ n_{\omega} \end{bmatrix}
+w = \begin{bmatrix} n_a \\ n_{\omega} \\ 0 \\ 0 \end{bmatrix}
 $$
-事实上，在实现中，只需要将`bais`更新代码注释掉，不对其进行更新即可。
+使用默认参数，考虑随机游走情况下的结果如下
+
+```bash
+APE w.r.t. full transformation (unit-less)
+(not aligned)
+
+       max	1.520900
+      mean	0.899698
+    median	0.896427
+       min	0.054898
+      rmse	0.915499
+       sse	3650.933887
+       std	0.169360
+```
+
+不考虑随机游走情况下的结果如下
+
+```bash
+APE w.r.t. full transformation (unit-less)
+(not aligned)
+
+       max	1.492592
+      mean	0.899016
+    median	0.892805
+       min	0.054880
+      rmse	0.914985
+       sse	3650.181899
+       std	0.170199
+```
+
+结果大致相似，从理论上来讲，考虑随机游走的情况应该会更好，因为根据卡尔曼滤波器的理论，若不考虑不随机游走，根据增益的计算方式，观测值无法对零偏形成矫正关系，而位置和姿态的计算又依赖于零偏。但是，根据实际的实验，两者的效果基本没有区别，影响效果的关键还是参数的选择。
 
 ## 不同噪声设置情况下的结果对比(至少5组参数)
 
