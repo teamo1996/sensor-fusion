@@ -87,6 +87,8 @@ public:
         jacobian_i.block<3, 3>(INDEX_P, INDEX_P) = -R_i_inv;
         jacobian_i.block<3, 3>(INDEX_R, INDEX_R) = -J_r_inv*(ori_ij*ori_j.inverse()*ori_i).matrix();
 
+        jacobian_i.block<3,3>(0,3) = R_i_inv*Sophus::SO3d::hat(pos_j-pos_i);
+
         jacobian_i = sqrt_info * jacobian_i;
 
       }

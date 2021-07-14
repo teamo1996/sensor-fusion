@@ -273,8 +273,8 @@ $$
 
 | EKF                                              | VIO                 |
 | ------------------------------------------------ | ------------------- |
-| ![5-1622991890816](pictures/5-1622991890816.png) | ![](pictures/2.png) |
-| ![4-1622991903006](pictures/4-1622991903006.png) | ![](pictures/3.png) |
+| ![5-1622991890816](pictures/5-1622991890816.png) | ![](pictures/7.png) |
+| ![4-1622991903006](pictures/4-1622991903006.png) | ![](pictures/8.png) |
 
 EKF
 
@@ -297,22 +297,24 @@ VIO
 APE w.r.t. full transformation (unit-less)
 (not aligned)
 
-       max	3.956800
-      mean	2.418937
-    median	2.556470
+       max	3.342999
+      mean	1.504630
+    median	1.555986
        min	0.000001
-      rmse	2.544605
-       sse	29318.862875
-       std	0.789782
+      rmse	1.623278
+       sse	11931.417004
+       std	0.609196
 ```
 
-从图中可以看出，基于滑动窗口VIO的定位在精度上要低于基于EKF的定位，这从直观上来说是难以理解的，可能有以下原因
+从图中可以看出，基于滑动窗口VIO的定位在精度上要低于基于EKF的定位，但是在轨迹平滑性有了大幅度的提升，可能有以下原因
 
 * 基于滑动窗口的VIO融合的单边位姿是点云在地图中重定位得到的，而EKF章节中使用的就是参考轨迹GNSS的位姿态，那么当以GNSS作为真值时，滑动窗口VIO的精度会较低。
 * 边缘化处理中未使用`FEJ`公式，而是在不同点进行了线性化，这可能会造成错误的约束。
-* 地图质量问题，在这一章提供的地图与真实的GNSS位置之间是有一个常值的偏差的，目前不清楚这个地图文件的来源。
-
 * 关键帧之间的距离选取不合适，导致预积分量的误差较大
+* 边缘化信息没有随着窗口的滑动而传递
+* 原始数据存在问题
+
+同时我们可以发现，VIO的结果在开始路段的附近要显著的好于EKF
 
 # 对比不同窗口长度对于融合效果的影响
 
@@ -324,13 +326,13 @@ APE w.r.t. full transformation (unit-less)
 APE w.r.t. full transformation (unit-less)
 (not aligned)
 
-       max	4.340836
-      mean	2.943467
-    median	3.060854
+       max	3.341343
+      mean	1.486215
+    median	1.527445
        min	0.000001
-      rmse	3.010065
-       sse	41016.837889
-       std	0.629674
+      rmse	1.599735
+       sse	11587.833756
+       std	0.591875
 ```
 
 * `WINDOWSIZE` = 20
@@ -339,13 +341,13 @@ APE w.r.t. full transformation (unit-less)
 APE w.r.t. full transformation (unit-less)
 (not aligned)
 
-       max	3.956800
-      mean	2.418937
-    median	2.556470
+       max	3.342999
+      mean	1.504630
+    median	1.555986
        min	0.000001
-      rmse	2.544605
-       sse	29318.862875
-       std	0.789782
+      rmse	1.623278
+       sse	11931.417004
+       std	0.609196
 ```
 
 * `WINDOWSIZE` = 30
@@ -354,13 +356,13 @@ APE w.r.t. full transformation (unit-less)
 APE w.r.t. full transformation (unit-less)
 (not aligned)
 
-       max	4.154153
-      mean	2.299453
-    median	2.360962
+       max	3.349993
+      mean	1.512396
+    median	1.562529
        min	0.000001
-      rmse	2.460676
-       sse	27410.645795
-       std	0.876037
+      rmse	1.634980
+       sse	12104.070253
+       std	0.621142
 ```
 
-根据上面的数据可以看出，随着滑动窗口长度的增加，误差的均值会逐渐下降，精度逐渐上升。但同时误差的波动也会变大，计算消耗增加，这是符合我们预期的。
+根据上面的数据可以看出，随着滑动窗口长度的增加，精度基本保持不变，略微有所下降，这其实也不是非常符合直觉，这里可能的原因与上述类似。
