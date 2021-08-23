@@ -124,7 +124,11 @@ bool ICPSVDRegistration::ScanMatch(
     }
 
     // set output:
+
     result_pose = transformation_ * predict_pose;
+    Eigen::Quaternionf q(result_pose.block<3,3>(0,0));
+    q.normalize();
+    result_pose.block<3,3>(0,0) = q.toRotationMatrix();
     pcl::transformPointCloud(*input_source_, *result_cloud_ptr, result_pose);
     
     return true;
