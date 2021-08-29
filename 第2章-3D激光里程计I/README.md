@@ -40,11 +40,10 @@
 
 ![](./pictures/GN.png)
 
-
-
 ![](./pictures/NDT_ape.png)
 
 
 
 ![](./pictures/NDT_rpe.png)
 
+> 注意，这里基于优化的ICP没有进行旋转矩阵的归一化，具体的归一化代码可以参考ICP-SVD部分，后期会对代码进行重构
