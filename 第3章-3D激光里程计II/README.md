@@ -74,21 +74,22 @@ public:
         Eigen::Vector3d lp = T * cur_point_;
         Eigen::Vector3d de = last_point_a_ - last_point_b_;
         Eigen::Vector3d nu = (lp - last_point_b_).cross(lp - last_point_a_);
-        residuals[0] = nu.norm() / de.norm();
+        residuals[0] = nu.norm() / de.norm();		// 基于标量形式的残差
 
         if (jacobians != nullptr) {
             if (jacobians[0] != nullptr) {
-                Eigen::Matrix3d lp_hat = Sophus::SO3d::hat(lp);
+                Eigen::Matrix3d lp_hat = Sophus::SO3d::hat(lp);		// （Rp_i + t)^{hat}
                 Eigen::Matrix<double, 3, 6> dp_dse3;
-                (dp_dse3.block<3, 3>(0, 0)).setIdentity();
-                dp_dse3.block<3, 3>(0, 3) = -lp_hat;
-
+                (dp_dse3.block<3, 3>(0, 0)).setIdentity();				// 左上角单位矩阵
+                dp_dse3.block<3, 3>(0, 3) = -lp_hat;							// 右上角 -（Rp_i + t)^{hat}
+								
                 Eigen::Map<Eigen::Matrix<double, 1, 6>> J_se3(jacobians[0]);
+              
                 J_se3.setZero();
-                
+                // X/(|X| |p_a - p_b|) * (p_a - p_b)^{hat}
                 Eigen::Matrix<double, 1, 3> de_dp = 
                     (nu / (de.norm() * nu.norm())).transpose() * Sophus::SO3d::hat(de);
-                J_se3.block<1, 6>(0, 0) = de_dp * dp_dse3;
+                J_se3.block<1, 6>(0, 0) = de_dp * dp_dse3;	// 1*3 * 3*6 = 1*6
             }
         }
         return true;
@@ -122,7 +123,7 @@ public:
         Eigen::Vector3d pipj = lpi - last_point_j_;
         Eigen::Vector3d ljm_norm = 
             (last_point_l_ - last_point_j_).cross(last_point_m_ - last_point_j_);
-        ljm_norm.normalize();
+        ljm_norm.normalize();			// 公式(8)
 
         residuals[0] = pipj.dot(ljm_norm);
         if (jacobians != nullptr) {
